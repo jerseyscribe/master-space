@@ -4916,9 +4916,14 @@ async function pullLatest() {
   if (btn) { btn.textContent = '⟳ Pulling…'; btn.disabled = true; }
   const ok = await loadFromGist();
   if (ok) {
-    renderTodos(); renderWishlist(); renderUkeSongs();
-    renderCountdowns(); renderUrgentSidebar();
-    renderMtgDecks(); renderMtgCalendar();
+    try { renderProjects(); }      catch(e) {}
+    try { renderTodos(); }         catch(e) {}
+    try { renderWishlist(); }      catch(e) {}
+    try { renderUkeSongs(); }      catch(e) {}
+    try { renderCountdowns(); }    catch(e) {}
+    try { renderUrgentSidebar(); } catch(e) {}
+    try { renderMtgDecks(); }      catch(e) {}
+    try { renderMtgCalendar(); }   catch(e) {}
   }
   if (btn) { btn.textContent = '⬆ Pull Latest'; btn.disabled = false; }
 }
