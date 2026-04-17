@@ -1329,6 +1329,7 @@
 </nav>
 <div class="nav-backup-row">
   <span class="sync-status notoken" id="sync-status" onclick="showTokenModal()" title="Set up GitHub sync">○ Not syncing</span>
+  <button class="backup-btn" id="pull-btn" onclick="pullLatest()" style="display:none" title="Pull latest data from Gist before making changes">⬆ Pull Latest</button>
   <button class="backup-btn" onclick="exportData()" title="Download all your data as a JSON backup file">⬇ Export Data</button>
   <button class="backup-btn" onclick="document.getElementById('backup-file-input').click()" title="Restore data from a backup JSON file">⬆ Import Data</button>
   <input type="file" id="backup-file-input" accept=".json" onchange="importData(event)">
@@ -4845,6 +4846,8 @@ function setSyncStatus(state, label) {
   const icons    = { syncing:'<span class="sync-spin">⟳</span>', saved:'✓', error:'✗', notoken:'○' };
   el.innerHTML   = (icons[state]||'') + ' ' + (label || defaults[state] || state);
   el.onclick     = (state === 'notoken' || state === 'error') ? showTokenModal : null;
+  const pullBtn = document.getElementById('pull-btn');
+  if (pullBtn) pullBtn.style.display = (state !== 'notoken') ? 'inline-flex' : 'none';
 }
 
 async function loadFromGist() {
@@ -4906,6 +4909,18 @@ async function syncToGist() {
 function scheduleSync() {
   clearTimeout(_syncTimer);
   _syncTimer = setTimeout(syncToGist, 2000);
+}
+
+async function pullLatest() {
+  const btn = document.getElementById('pull-btn');
+  if (btn) { btn.textContent = '⟳ Pulling…'; btn.disabled = true; }
+  const ok = await loadFromGist();
+  if (ok) {
+    renderTodos(); renderWishlist(); renderUkeSongs();
+    renderCountdowns(); renderUrgentSidebar();
+    renderMtgDecks(); renderMtgCalendar();
+  }
+  if (btn) { btn.textContent = '⬆ Pull Latest'; btn.disabled = false; }
 }
 
 // ── Token Modal ──
