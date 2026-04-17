@@ -4393,7 +4393,8 @@ function renderUrgentSidebar() {
 //  BOOT
 // ════════════════════════════════════════
 async function showApp() {
-  await loadFromGist();   // pull fresh data before first render
+  // Pull fresh data before first render — 8s timeout so the app never hangs
+  try { await Promise.race([loadFromGist(), new Promise((_,r) => setTimeout(() => r('timeout'), 8000))]); } catch(e) { setSyncStatus('error'); }
   renderTodos();
   renderWishlist();
   renderUkeSongs();
