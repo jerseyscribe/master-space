@@ -1328,25 +1328,14 @@
   <button class="nav-btn" data-page="mtg">🃏 MTG</button>
 </nav>
 <div class="nav-backup-row">
-  <span class="sync-status notoken" id="sync-status" onclick="showTokenModal()" title="Set up GitHub sync">○ Not syncing</span>
-  <button class="backup-btn" id="pull-btn" onclick="pullLatest()" style="display:none" title="Pull latest data from Gist before making changes">⬆ Pull Latest</button>
+  <span class="sync-status syncing" id="sync-status" title="Firebase sync"><span class="sync-spin">⟳</span> Connecting…</span>
+  <button class="backup-btn" id="pull-btn" onclick="pullLatest()" title="Pull latest data from all devices">⬆ Pull Latest</button>
   <button class="backup-btn" onclick="exportData()" title="Download all your data as a JSON backup file">⬇ Export Data</button>
   <button class="backup-btn" onclick="document.getElementById('backup-file-input').click()" title="Restore data from a backup JSON file">⬆ Import Data</button>
   <input type="file" id="backup-file-input" accept=".json" onchange="importData(event)">
 </div>
 <div class="backup-toast" id="backup-toast"></div>
-<div class="token-modal-bg" id="token-modal-bg" style="display:none">
-  <div class="token-modal">
-    <h2>🔑 GitHub Sync Setup</h2>
-    <p>Paste your GitHub Personal Access Token (gist scope only). It stays in <em>this browser only</em> — it's never sent anywhere except GitHub's API to sync your data.</p>
-    <input type="password" id="token-input" placeholder="ghp_xxxxxxxxxxxxxxxxxxxx" />
-    <div class="token-modal-btns">
-      <button class="token-clear-btn" id="token-clear-btn" onclick="clearToken()" style="display:none">Remove token</button>
-      <button class="token-skip-btn" onclick="hideTokenModal()">Cancel</button>
-      <button class="token-save-btn" onclick="saveToken()">Save &amp; Sync</button>
-    </div>
-  </div>
-</div>
+
 
 <!-- ════════════════════════════════════════
      PAGE 1 · PROJECTS
@@ -1801,6 +1790,23 @@
     <textarea id="idea-modal-detail" placeholder="Start writing…" style="flex:1; background:none; border:none; color:#ddd; font-size:1rem; font-family:inherit; outline:none; resize:none; line-height:1.7; width:100%; min-height:0;"></textarea>
   </div>
 </div>
+
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+  import { getFirestore, doc, setDoc, getDoc, collection, getDocs } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+  const firebaseConfig = {
+    apiKey: "AIzaSyCa5a9EuGBN9oxkRYo_mM-kx60r-lEZT3Q",
+    authDomain: "master-space-dff9a.firebaseapp.com",
+    projectId: "master-space-dff9a",
+    storageBucket: "master-space-dff9a.firebasestorage.app",
+    messagingSenderId: "512921753617",
+    appId: "1:512921753617:web:7e74d3911892ec8e3539b0"
+  };
+  const app = initializeApp(firebaseConfig);
+  const db = getFirestore(app);
+  window.db = db;
+  window.firebaseFns = { doc, setDoc, getDoc, collection, getDocs };
+</script>
 
 <script>
 var todos = JSON.parse(localStorage.getItem('jp_todos') || '[]');
@@ -4825,16 +4831,11 @@ function filterByChord(chord) {
 
 // ── Boot — deferred so ticker/canvas elements are in the DOM ─────────────
 // ════════════════════════════════════════
-//  GITHUB GIST SYNC
+//  FIREBASE FIRESTORE SYNC
 // ════════════════════════════════════════
 
-const GIST_ID      = 'bc05be5213e61fe5c354ffb248272bdc';
-const GIST_FILE    = 'master-space-data.json';
-const GH_TOKEN_KEY = 'master-space-gh-token';
-
-function getGhToken()   { return localStorage.getItem(GH_TOKEN_KEY); }
-function setGhToken(t)  { localStorage.setItem(GH_TOKEN_KEY, t.trim()); }
-function nukeGhToken()  { localStorage.removeItem(GH_TOKEN_KEY); }
+const FB_COLLECTION = 'app-data';
+const FB_DOC_ID     = 'main';
 
 var _syncTimer = null;
 
@@ -4842,28 +4843,19 @@ function setSyncStatus(state, label) {
   const el = document.getElementById('sync-status');
   if (!el) return;
   el.className = 'sync-status ' + state;
-  const defaults = { syncing:'Syncing…', saved:'Synced', error:'Sync error', notoken:'Not syncing' };
-  const icons    = { syncing:'<span class="sync-spin">⟳</span>', saved:'✓', error:'✗', notoken:'○' };
+  const defaults = { syncing:'Syncing…', saved:'Synced', error:'Sync error' };
+  const icons    = { syncing:'<span class="sync-spin">⟳</span>', saved:'✓', error:'✗' };
   el.innerHTML   = (icons[state]||'') + ' ' + (label || defaults[state] || state);
-  el.onclick     = (state === 'notoken' || state === 'error') ? showTokenModal : null;
-  const pullBtn = document.getElementById('pull-btn');
-  if (pullBtn) pullBtn.style.display = (state !== 'notoken') ? 'inline-flex' : 'none';
 }
 
-async function loadFromGist() {
-  const token = getGhToken();
-  if (!token) { setSyncStatus('notoken'); return false; }
+async function loadFromFirestore() {
+  if (!window.db || !window.firebaseFns) { setSyncStatus('error', '✗ Firebase not ready'); return false; }
   setSyncStatus('syncing');
   try {
-    const res = await fetch('https://api.github.com/gists/' + GIST_ID + '?t=' + Date.now(), {
-      headers: { Authorization: 'token ' + token, Accept: 'application/vnd.github.v3+json', 'Cache-Control': 'no-cache' }
-    });
-    if (res.status === 401) { setSyncStatus('error', '✗ Bad token'); return false; }
-    if (!res.ok) throw new Error('HTTP ' + res.status);
-    const gist = await res.json();
-    const raw  = gist.files[GIST_FILE] ? gist.files[GIST_FILE].content : null;
-    if (raw) {
-      const data = JSON.parse(raw);
+    const { doc, getDoc } = window.firebaseFns;
+    const snap = await getDoc(doc(window.db, FB_COLLECTION, FB_DOC_ID));
+    if (snap.exists()) {
+      const data = snap.data();
       Object.keys(data).forEach(k => {
         if (k === '_exported' || k === '_version') return;
         try { localStorage.setItem(k, JSON.stringify(data[k])); } catch(e) {}
@@ -4877,15 +4869,14 @@ async function loadFromGist() {
     setSyncStatus('saved');
     return true;
   } catch(e) {
-    console.error('Gist load error', e);
+    console.error('Firestore load error', e);
     setSyncStatus('error');
     return false;
   }
 }
 
-async function syncToGist() {
-  const token = getGhToken();
-  if (!token) return;
+async function syncToFirestore() {
+  if (!window.db || !window.firebaseFns) return;
   setSyncStatus('syncing');
   const data = { _exported: new Date().toISOString() };
   BACKUP_KEYS.forEach(k => {
@@ -4893,28 +4884,24 @@ async function syncToGist() {
     if (v !== null) { try { data[k] = JSON.parse(v); } catch(e) {} }
   });
   try {
-    const res = await fetch('https://api.github.com/gists/' + GIST_ID, {
-      method: 'PATCH',
-      headers: { Authorization: 'token ' + token, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ files: { [GIST_FILE]: { content: JSON.stringify(data, null, 2) } } })
-    });
-    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const { doc, setDoc } = window.firebaseFns;
+    await setDoc(doc(window.db, FB_COLLECTION, FB_DOC_ID), data);
     setSyncStatus('saved');
   } catch(e) {
-    console.error('Gist sync error', e);
+    console.error('Firestore sync error', e);
     setSyncStatus('error');
   }
 }
 
 function scheduleSync() {
   clearTimeout(_syncTimer);
-  _syncTimer = setTimeout(syncToGist, 2000);
+  _syncTimer = setTimeout(syncToFirestore, 2000);
 }
 
 async function pullLatest() {
   const btn = document.getElementById('pull-btn');
   if (btn) { btn.textContent = '⟳ Pulling…'; btn.disabled = true; }
-  const ok = await loadFromGist();
+  const ok = await loadFromFirestore();
   if (ok) {
     try { renderProjects(); }      catch(e) {}
     try { renderTodos(); }         catch(e) {}
@@ -4928,39 +4915,12 @@ async function pullLatest() {
   if (btn) { btn.textContent = '⬆ Pull Latest'; btn.disabled = false; }
 }
 
-// ── Token Modal ──
-function showTokenModal() {
-  const bg  = document.getElementById('token-modal-bg');
-  const inp = document.getElementById('token-input');
-  const clr = document.getElementById('token-clear-btn');
-  if (!bg) return;
-  const existing = getGhToken();
-  if (inp) inp.value = existing || '';
-  if (clr) clr.style.display = existing ? 'block' : 'none';
-  bg.style.display = 'flex';
-  if (inp) inp.focus();
-}
-function hideTokenModal() {
-  const bg = document.getElementById('token-modal-bg');
-  if (bg) bg.style.display = 'none';
-}
-async function saveToken() {
-  const inp = document.getElementById('token-input');
-  if (!inp || !inp.value.trim()) return;
-  setGhToken(inp.value.trim());
-  hideTokenModal();
-  const ok = await loadFromGist();
-  if (ok) {
-    renderTodos(); renderWishlist(); renderUkeSongs();
-    renderCountdowns(); renderUrgentSidebar();
-    renderMtgDecks(); renderMtgCalendar();
-  }
-}
-function clearToken() {
-  if (!confirm('Remove token and disable sync?')) return;
-  nukeGhToken();
-  hideTokenModal();
-  setSyncStatus('notoken');
+async function loadNotes() {
+  const { collection, getDocs } = window.firebaseFns;
+  const querySnapshot = await getDocs(collection(window.db, "notes"));
+  const notes = [];
+  querySnapshot.forEach(doc => { notes.push(doc.data()); });
+  return notes;
 }
 
 // ════════════════════════════════════════
