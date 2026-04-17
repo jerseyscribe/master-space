@@ -4855,8 +4855,8 @@ async function loadFromGist() {
   if (!token) { setSyncStatus('notoken'); return false; }
   setSyncStatus('syncing');
   try {
-    const res = await fetch('https://api.github.com/gists/' + GIST_ID, {
-      headers: { Authorization: 'token ' + token, Accept: 'application/vnd.github.v3+json' }
+    const res = await fetch('https://api.github.com/gists/' + GIST_ID + '?t=' + Date.now(), {
+      headers: { Authorization: 'token ' + token, Accept: 'application/vnd.github.v3+json', 'Cache-Control': 'no-cache' }
     });
     if (res.status === 401) { setSyncStatus('error', '✗ Bad token'); return false; }
     if (!res.ok) throw new Error('HTTP ' + res.status);
